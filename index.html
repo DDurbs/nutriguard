@@ -794,16 +794,65 @@ function updateDate() {
     d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 }
 
+// ── QUERY ALIASES — maps user terms to USDA-friendly terms ───────────────────
+const QUERY_ALIASES = {
+  'romaine': 'romaine lettuce',
+  'romaine lettuce': 'lettuce romaine',
+  'zucchini': 'zucchini summer squash',
+  'raw zucchini': 'squash summer zucchini raw',
+  'courgette': 'zucchini summer squash',
+  'bell pepper': 'sweet pepper',
+  'green pepper': 'sweet pepper green',
+  'red pepper': 'sweet pepper red',
+  'egg': 'egg whole raw',
+  'eggs': 'egg whole raw',
+  'whole egg': 'egg whole raw',
+  'avocado': 'avocados raw',
+  'salmon': 'salmon atlantic raw',
+  'greek yogurt': 'yogurt greek plain',
+  'cottage cheese': 'cheese cottage lowfat',
+  'sweet potato': 'sweet potato raw',
+  'oats': 'oats rolled dry',
+  'brown rice': 'rice brown long grain',
+  'lentils': 'lentils raw',
+  'broccoli': 'broccoli raw',
+  'apple': 'apple raw with skin',
+  'banana': 'bananas raw',
+  'nectarine': 'nectarines raw',
+  'peach': 'peaches raw',
+  'kiwi': 'kiwi fruit raw',
+  'orange': 'oranges raw',
+  'cherry': 'cherries sweet raw',
+  'cherries': 'cherries sweet raw',
+  'blueberry': 'blueberries raw',
+  'blueberries': 'blueberries raw',
+  'chicken breast': 'chicken breast raw boneless',
+  'turkey breast': 'turkey breast raw',
+  'english muffin': 'english muffin plain',
+  'swiss cheese': 'cheese swiss',
+};
+
 // ── API: USDA ────────────────────────────────────────────────────────────────
 async function searchUSDA(query) {
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=12&dataType=SR%20Legacy,Foundation,Survey%20(FNDDS)&api_key=DEMO_KEY`;
+  const q = query.toLowerCase().trim();
+  // Use alias if available, otherwise use original query
+  const searchTerm = QUERY_ALIASES[q] || query;
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(searchTerm)}&pageSize=12&dataType=SR%20Legacy,Foundation,Survey%20(FNDDS)&api_key=DEMO_KEY`;
   const r = await fetch(url);
   if (!r.ok) throw new Error('USDA failed');
   const data = await r.json();
-  return (data.foods||[]).map(f => {
+
+  // If alias search returned nothing, retry with original query
+  let foods = data.foods || [];
+  if (foods.length === 0 && searchTerm !== query) {
+    const r2 = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=12&dataType=SR%20Legacy,Foundation,Survey%20(FNDDS)&api_key=DEMO_KEY`);
+    const data2 = await r2.json();
+    foods = data2.foods || [];
+  }
+
+  return foods.map(f => {
     const get = id => (f.foodNutrients||[]).find(n=>n.nutrientId===id)?.value||0;
     const sodium = get(1093), satFat = get(1258);
-    // Determine per-unit label — USDA whole foods are per 100g
     const perUnit = f.servingSize ? `${f.servingSize}${f.servingSizeUnit||'g'}` : '100g';
     return {
       id:'usda_'+f.fdcId, name:f.description,
@@ -1136,37 +1185,49 @@ async function handleBarcodeResult(code) {
 function rankFoods(foods, query) {
   const q = query.toLowerCase().trim();
   const qWords = q.split(/\s+/);
+  const firstWord = qWords[0];
 
   return foods.map(f => {
     const name = f.name.toLowerCase();
+    const nameWords = name.split(/[\s,]+/);
     let score = 0;
 
-    // USDA whole foods always rank above packaged foods
-    if (f.source === 'usda') score += 100;
+    // ── USDA source bonus (whole foods database always preferred)
+    if (f.source === 'usda') score += 200;
 
-    // Exact name match
-    if (name === q) score += 200;
+    // ── Exact full name match
+    if (name === q) score += 500;
 
-    // Name starts with query
-    if (name.startsWith(q)) score += 150;
+    // ── Name starts with the full query (e.g. "egg" → "egg, whole, raw")
+    if (name.startsWith(q)) score += 400;
 
-    // All query words appear in name
-    if (qWords.every(w => name.includes(w))) score += 80;
+    // ── First word of name exactly matches first word of query
+    if (nameWords[0] === firstWord) score += 300;
 
-    // First word of name matches first word of query
-    const firstWord = name.split(/[\s,]+/)[0];
-    if (firstWord === qWords[0]) score += 60;
+    // ── First word of name starts with first query word
+    if (nameWords[0].startsWith(firstWord)) score += 150;
 
-    // Query is the majority of the name (not buried as ingredient)
-    const nameWords = name.split(/\s+/);
-    const matchRatio = qWords.filter(w => nameWords.includes(w)).length / nameWords.length;
-    score += matchRatio * 40;
+    // ── All query words appear in the name
+    if (qWords.every(w => name.includes(w))) score += 100;
 
-    // Penalize if query word only appears late in a long name (ingredient-buried)
-    if (nameWords.length > 6 && nameWords.indexOf(qWords[0]) > 3) score -= 50;
+    // ── HEAVY penalty: query word appears only as ingredient deep in name
+    // e.g. "eggs benedict" for query "egg" — "egg" is not the first word
+    const firstOccurrence = nameWords.findIndex(w => w.startsWith(firstWord));
+    if (firstOccurrence > 1) score -= 300;
+    if (firstOccurrence > 3) score -= 200; // extra penalty for very buried matches
 
-    // Penalize zero-calorie entries (likely incomplete data)
-    if (f.calories === 0) score -= 30;
+    // ── Penalty for compound/dish names (contains words like "with","and","sauce","mix","benedict","casserole")
+    const dishWords = ['benedict','casserole','salad','sandwich','sauce','soup','mix',
+      'loaf','roll','cake','pie','pudding','stew','curry','fried','baked','stuffed',
+      'scrambled','omelet','quiche','frittata','wrap','bowl','platter','combo'];
+    if (dishWords.some(d => name.includes(d))) score -= 250;
+
+    // ── Reward short simple names (whole foods have short names)
+    if (nameWords.length <= 4) score += 80;
+    if (nameWords.length <= 2) score += 60;
+
+    // ── Penalty for zero calories (incomplete data)
+    if (f.calories === 0) score -= 100;
 
     return { ...f, _score: score };
   })
@@ -1190,12 +1251,29 @@ const COMMON_PORTIONS = {
   'rice': [{label:'¼ cup dry', grams:46},{label:'½ cup dry', grams:93},{label:'1 cup cooked', grams:186}],
   'lentils': [{label:'¼ cup dry', grams:48},{label:'½ cup cooked', grams:99},{label:'1 cup cooked', grams:198}],
   'bell pepper': [{label:'½ pepper', grams:75},{label:'1 medium pepper', grams:119},{label:'1 large pepper', grams:164}],
+  'green pepper': [{label:'½ pepper', grams:75},{label:'1 medium pepper', grams:119},{label:'1 large pepper', grams:164}],
+  'zucchini': [{label:'½ cup sliced', grams:62},{label:'1 cup sliced', grams:124},{label:'1 medium zucchini', grams:196}],
+  'raw zucchini': [{label:'½ cup sliced', grams:62},{label:'1 cup sliced', grams:124},{label:'1 medium zucchini', grams:196}],
+  'romaine': [{label:'1 cup shredded', grams:47},{label:'2 cups shredded', grams:94},{label:'3 cups shredded', grams:141}],
+  'romaine lettuce': [{label:'1 cup shredded', grams:47},{label:'2 cups shredded', grams:94},{label:'3 cups (large salad)', grams:141}],
+  'lettuce': [{label:'1 cup shredded', grams:47},{label:'2 cups shredded', grams:94},{label:'3 cups (large salad)', grams:141}],
+  'tomato': [{label:'1 small tomato', grams:91},{label:'1 medium tomato', grams:123},{label:'1 large tomato', grams:182}],
+  'peach': [{label:'1 small peach', grams:130},{label:'1 medium peach', grams:150},{label:'1 large peach', grams:175}],
+  'nectarine': [{label:'1 small nectarine', grams:129},{label:'1 medium nectarine', grams:150},{label:'1 large nectarine', grams:173}],
 };
 
 function getPortionsForQuery(query) {
   const q = query.toLowerCase().trim();
+  // Exact key match first
+  if (COMMON_PORTIONS[q]) return COMMON_PORTIONS[q];
+  // Then check if query contains a key or key contains query
   for (const key of Object.keys(COMMON_PORTIONS)) {
     if (q.includes(key) || key.includes(q)) return COMMON_PORTIONS[key];
+  }
+  // Check first word match
+  const firstWord = q.split(/\s+/)[0];
+  for (const key of Object.keys(COMMON_PORTIONS)) {
+    if (key.startsWith(firstWord) || firstWord === key.split(/\s+/)[0]) return COMMON_PORTIONS[key];
   }
   return null;
 }
