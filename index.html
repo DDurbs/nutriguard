@@ -262,6 +262,38 @@
   ::-webkit-scrollbar { width: 3px; }
   ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
 
+  /* PER UNIT LABEL ON RESULT CARDS */
+  .result-per-unit {
+    font-size: 11px; color: var(--accent2); font-weight: 600;
+    margin-bottom: 6px; letter-spacing: 0.2px;
+  }
+
+  /* PORTION HINT BELOW SEARCH RESULTS */
+  .portion-hint {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px;
+  }
+  .portion-hint-title { font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 7px; }
+  .portion-hint-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 5px; }
+  .portion-chip {
+    font-size: 11px; padding: 4px 10px; border-radius: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text2); cursor: default;
+  }
+  .portion-hint-note { font-size: 10px; color: var(--text3); }
+
+  /* PORTION CHIPS IN MODAL */
+  .portion-modal-label { font-size: 11px; color: var(--text2); margin-bottom: 7px; font-weight: 600; }
+  .portion-chips-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .portion-modal-chip {
+    font-size: 12px; padding: 6px 12px; border-radius: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text2); cursor: pointer; transition: all 0.15s;
+  }
+  .portion-modal-chip:active, .portion-modal-chip.selected {
+    background: var(--accent2); border-color: var(--accent); color: var(--text);
+  }
+
   /* MANUAL ENTRY BUTTON */
   .manual-entry-btn {
     width: 100%; padding: 12px; background: transparent;
@@ -495,7 +527,8 @@
     <div class="modal-title" id="modal-title"></div>
     <div class="modal-brand" id="modal-brand"></div>
     <div class="modal-cal-big" id="modal-cal-big">0</div>
-    <div class="modal-cal-label">calories per serving</div>
+    <div class="modal-cal-label" id="modal-cal-label">calories per 100g</div>
+    <div id="modal-portion-chips" style="display:none"></div>
     <div class="modal-macros">
       <div class="modal-macro">
         <div class="modal-macro-val" id="modal-protein">0g</div>
@@ -763,13 +796,15 @@ function updateDate() {
 
 // ── API: USDA ────────────────────────────────────────────────────────────────
 async function searchUSDA(query) {
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=8&dataType=SR%20Legacy,Foundation,Survey%20(FNDDS)&api_key=DEMO_KEY`;
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=12&dataType=SR%20Legacy,Foundation,Survey%20(FNDDS)&api_key=DEMO_KEY`;
   const r = await fetch(url);
   if (!r.ok) throw new Error('USDA failed');
   const data = await r.json();
   return (data.foods||[]).map(f => {
     const get = id => (f.foodNutrients||[]).find(n=>n.nutrientId===id)?.value||0;
     const sodium = get(1093), satFat = get(1258);
+    // Determine per-unit label — USDA whole foods are per 100g
+    const perUnit = f.servingSize ? `${f.servingSize}${f.servingSizeUnit||'g'}` : '100g';
     return {
       id:'usda_'+f.fdcId, name:f.description,
       brand: f.brandOwner||'USDA',
@@ -782,6 +817,9 @@ async function searchUSDA(query) {
       satFat: Math.round(satFat*10)/10,
       servingSize: f.servingSize||100,
       servingUnit: f.servingSizeUnit||'g',
+      perUnit,
+      perUnitGrams: f.servingSize||100,
+      source: 'usda',
       flags: getFlags(f.description, sodium, satFat)
     };
   });
@@ -789,13 +827,14 @@ async function searchUSDA(query) {
 
 // ── API: OPEN FOOD FACTS ─────────────────────────────────────────────────────
 async function searchOFF(query) {
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=6`;
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=8`;
   const r = await fetch(url);
   if (!r.ok) throw new Error('OFF failed');
   const data = await r.json();
   return (data.products||[]).filter(p=>p.product_name&&p.nutriments).map(p => {
     const n = p.nutriments;
     const sodium = (n.sodium_100g||0)*1000, satFat = n['saturated-fat_100g']||0;
+    const perUnit = p.serving_size || '100g';
     return {
       id:'off_'+p.code, name:p.product_name,
       brand:p.brands||'Open Food Facts',
@@ -808,6 +847,9 @@ async function searchOFF(query) {
       satFat: Math.round(satFat*10)/10,
       servingSize: p.serving_size||'100g',
       servingUnit:'serving',
+      perUnit,
+      perUnitGrams: 100,
+      source: 'off',
       flags: getFlags(p.product_name, sodium, satFat)
     };
   });
@@ -837,16 +879,17 @@ async function searchByBarcode(barcode) {
 }
 
 // ── RENDER RESULTS ────────────────────────────────────────────────────────────
-function renderResults(foods) {
+function renderResults(foods, portions) {
   const list = document.getElementById('results-list');
   if (!foods.length) {
-    list.innerHTML = '<div class="loading">No results found. Try different search terms.</div>';
+    list.innerHTML = '<div class="loading">No results found. Try a more specific term like "large egg" or "raw broccoli".</div>';
     return;
   }
   list.innerHTML = foods.map((f,i) => `
     <div class="result-card" data-idx="${i}">
       <div class="result-name">${f.name}</div>
-      <div class="result-brand">${f.brand}</div>
+      <div class="result-brand">${f.source==='usda'?'🌿 USDA':f.brand}</div>
+      <div class="result-per-unit">Nutrition per: ${f.perUnit||'100g'}</div>
       <div class="result-meta">
         <div><span class="result-cal">${f.calories}<span> cal</span></span></div>
         <div class="result-macro">P: ${f.protein}g</div>
@@ -862,33 +905,63 @@ function renderResults(foods) {
     </div>
   `).join('');
   list._foods = foods;
+  list._portions = portions || null;
   list.querySelectorAll('.result-card').forEach(card => {
-    card.addEventListener('click', () => openModal(list._foods[+card.dataset.idx]));
+    card.addEventListener('click', () => openModal(list._foods[+card.dataset.idx], list._portions));
   });
 }
 
 // ── MODAL ────────────────────────────────────────────────────────────────────
-function openModal(food) {
+function openModal(food, portions) {
   selectedFood = food;
   document.getElementById('modal-title').textContent = food.name;
-  document.getElementById('modal-brand').textContent = food.brand;
+  document.getElementById('modal-brand').textContent = food.source==='usda' ? '🌿 USDA Database' : food.brand;
   document.getElementById('modal-cal-big').textContent = food.calories;
+  document.getElementById('modal-cal-label').textContent =
+    `calories per ${food.perUnit||'100g'}`;
   document.getElementById('modal-protein').textContent = food.protein+'g';
   document.getElementById('modal-carbs').textContent = food.carbs+'g';
   document.getElementById('modal-fat').textContent = food.fat+'g';
-  // Extended nutrients
+
   const sodEl = document.getElementById('modal-sodium');
   sodEl.textContent = food.sodium+'mg';
   const sodCard = document.getElementById('modal-card-sodium');
   sodCard.className = 'modal-nutrient' + (food.sodium>400?' warn':'');
   document.getElementById('modal-fiber').textContent = food.fiber+'g';
-  const sfEl = document.getElementById('modal-satfat');
-  sfEl.textContent = food.satFat+'g';
   const sfCard = document.getElementById('modal-card-satfat');
   sfCard.className = 'modal-nutrient' + (food.satFat>5?' caution':'');
+  document.getElementById('modal-satfat').textContent = food.satFat+'g';
   document.getElementById('modal-flags').innerHTML = renderFlags(food.flags);
+
+  // Serving input
   document.getElementById('serving-input').value = 1;
-  document.getElementById('serving-unit').textContent = food.servingUnit||'serving';
+  document.getElementById('serving-unit').textContent = food.perUnit || food.servingUnit || '100g';
+
+  // Portion chips
+  const chipsEl = document.getElementById('modal-portion-chips');
+  if (portions && portions.length) {
+    const perUnitGrams = food.perUnitGrams || 100;
+    chipsEl.innerHTML = `
+      <div class="portion-modal-label">Quick select a serving size:</div>
+      <div class="portion-chips-row">
+        ${portions.map(p => {
+          const servings = Math.round((p.grams / perUnitGrams) * 100) / 100;
+          return `<div class="portion-modal-chip" data-servings="${servings}">${p.label}</div>`;
+        }).join('')}
+      </div>`;
+    chipsEl.style.display = 'block';
+    chipsEl.querySelectorAll('.portion-modal-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.getElementById('serving-input').value = chip.dataset.servings;
+        chipsEl.querySelectorAll('.portion-modal-chip').forEach(c=>c.classList.remove('selected'));
+        chip.classList.add('selected');
+      });
+    });
+  } else {
+    chipsEl.style.display = 'none';
+    chipsEl.innerHTML = '';
+  }
+
   document.getElementById('modal-overlay').classList.add('active');
 }
 
@@ -1059,6 +1132,74 @@ async function handleBarcodeResult(code) {
   catch(e){status.innerHTML='<div class="error-msg">Product not found. Try searching by name.</div>';}
 }
 
+// ── SMART RANKING ─────────────────────────────────────────────────────────────
+function rankFoods(foods, query) {
+  const q = query.toLowerCase().trim();
+  const qWords = q.split(/\s+/);
+
+  return foods.map(f => {
+    const name = f.name.toLowerCase();
+    let score = 0;
+
+    // USDA whole foods always rank above packaged foods
+    if (f.source === 'usda') score += 100;
+
+    // Exact name match
+    if (name === q) score += 200;
+
+    // Name starts with query
+    if (name.startsWith(q)) score += 150;
+
+    // All query words appear in name
+    if (qWords.every(w => name.includes(w))) score += 80;
+
+    // First word of name matches first word of query
+    const firstWord = name.split(/[\s,]+/)[0];
+    if (firstWord === qWords[0]) score += 60;
+
+    // Query is the majority of the name (not buried as ingredient)
+    const nameWords = name.split(/\s+/);
+    const matchRatio = qWords.filter(w => nameWords.includes(w)).length / nameWords.length;
+    score += matchRatio * 40;
+
+    // Penalize if query word only appears late in a long name (ingredient-buried)
+    if (nameWords.length > 6 && nameWords.indexOf(qWords[0]) > 3) score -= 50;
+
+    // Penalize zero-calorie entries (likely incomplete data)
+    if (f.calories === 0) score -= 30;
+
+    return { ...f, _score: score };
+  })
+  .sort((a, b) => b._score - a._score)
+  .slice(0, 12);
+}
+
+// ── COMMON PORTIONS REFERENCE ─────────────────────────────────────────────────
+const COMMON_PORTIONS = {
+  'egg': [{label:'1 large egg', grams:50},{label:'1 medium egg', grams:44},{label:'2 large eggs', grams:100}],
+  'eggs': [{label:'1 large egg', grams:50},{label:'2 large eggs', grams:100},{label:'3 large eggs', grams:150}],
+  'apple': [{label:'1 small apple', grams:149},{label:'1 medium apple', grams:182},{label:'1 large apple', grams:223}],
+  'banana': [{label:'1 small banana', grams:101},{label:'1 medium banana', grams:118},{label:'1 large banana', grams:136}],
+  'chicken breast': [{label:'3 oz cooked', grams:85},{label:'4 oz cooked', grams:113},{label:'6 oz cooked', grams:170}],
+  'chicken': [{label:'3 oz cooked', grams:85},{label:'4 oz cooked', grams:113},{label:'6 oz cooked', grams:170}],
+  'salmon': [{label:'3 oz fillet', grams:85},{label:'4 oz fillet', grams:113},{label:'6 oz fillet', grams:170}],
+  'broccoli': [{label:'½ cup chopped', grams:44},{label:'1 cup chopped', grams:91},{label:'2 cups chopped', grams:182}],
+  'avocado': [{label:'¼ avocado', grams:50},{label:'½ avocado', grams:101},{label:'1 whole avocado', grams:201}],
+  'greek yogurt': [{label:'½ cup (4oz)', grams:113},{label:'1 cup (8oz)', grams:227},{label:'single serve cup', grams:170}],
+  'oats': [{label:'¼ cup dry', grams:20},{label:'½ cup dry', grams:40},{label:'1 cup dry', grams:81}],
+  'rice': [{label:'¼ cup dry', grams:46},{label:'½ cup dry', grams:93},{label:'1 cup cooked', grams:186}],
+  'lentils': [{label:'¼ cup dry', grams:48},{label:'½ cup cooked', grams:99},{label:'1 cup cooked', grams:198}],
+  'bell pepper': [{label:'½ pepper', grams:75},{label:'1 medium pepper', grams:119},{label:'1 large pepper', grams:164}],
+};
+
+function getPortionsForQuery(query) {
+  const q = query.toLowerCase().trim();
+  for (const key of Object.keys(COMMON_PORTIONS)) {
+    if (q.includes(key) || key.includes(q)) return COMMON_PORTIONS[key];
+  }
+  return null;
+}
+
 // ── SEARCH ────────────────────────────────────────────────────────────────────
 async function doSearch(query) {
   if(!query.trim())return;
@@ -1068,13 +1209,29 @@ async function doSearch(query) {
   list.innerHTML='';
   try{
     const [usda,off]=await Promise.allSettled([searchUSDA(query),searchOFF(query)]);
-    const foods=[
+    const raw=[
       ...(usda.status==='fulfilled'?usda.value:[]),
       ...(off.status==='fulfilled'?off.value:[])
-    ].slice(0,12);
-    status.innerHTML=foods.length
-      ?`<div class="section-label">${foods.length} results for "${query}"</div>`:'';
-    renderResults(foods);
+    ];
+    const foods = rankFoods(raw, query);
+
+    // Show common portions hint if available
+    const portions = getPortionsForQuery(query);
+    const portionHint = portions
+      ? `<div class="portion-hint">
+          <div class="portion-hint-title">📏 Common serving sizes for "${query}":</div>
+          <div class="portion-hint-chips">
+            ${portions.map(p=>`<div class="portion-chip" data-grams="${p.grams}">${p.label} (${p.grams}g)</div>`).join('')}
+          </div>
+          <div class="portion-hint-note">Tap a size below after selecting a food to auto-fill servings</div>
+        </div>`
+      : '';
+
+    status.innerHTML = (foods.length
+      ? `<div class="section-label">${foods.length} results — USDA whole foods listed first</div>`
+      : '') + portionHint;
+
+    renderResults(foods, portions);
   }catch(e){
     status.innerHTML='<div class="error-msg">Search failed. Check your connection and try again.</div>';
   }
