@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a3a2a">
+<title>NutriGuard — Personal Food Tracker</title>
+<style>
+  :root {
+    --bg: #0f1f17;
+    --surface: #1a2e22;
+    --surface2: #243d2e;
+    --surface3: #2e4f3a;
+    --accent: #4caf7d;
+    --accent2: #2d7a52;
+    --text: #e8f0eb;
+    --text2: #9ab8a4;
+    --text3: #5c7d6a;
+    --warn-ox: #e67e22;
+    --warn-pu: #8e44ad;
+    --warn-na: #e74c3c;
+    --warn-sf: #c0392b;
+    --good: #27ae60;
+    --border: #2e4f3a;
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh; max-width: 480px; margin: 0 auto; padding-bottom: 84px;
+  }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(135deg, #1a3a2a 0%, #0f2518 100%);
+    padding: 48px 16px 14px; position: sticky; top: 0; z-index: 100;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .app-name { font-size: 21px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .date-label { font-size: 12px; color: var(--text2); }
+
+  /* CALORIE RING ROW */
+  .cal-summary {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 14px 14px 10px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .ring-wrap { position: relative; width: 76px; height: 76px; flex-shrink: 0; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: var(--surface3); stroke-width: 7; }
+  .ring-fill { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round;
+    transition: stroke-dashoffset 0.6s ease; }
+  .ring-text { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; }
+  .ring-cal { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1; }
+  .ring-sub { font-size: 9px; color: var(--text2); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .cal-right { flex: 1; }
+  .cal-stats-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .cal-stat { text-align: center; }
+  .cal-stat-val { font-size: 17px; font-weight: 600; color: var(--text); }
+  .cal-stat-label { font-size: 10px; color: var(--text2); }
+
+  /* MACRO BARS */
+  .macro-bars { display: flex; flex-direction: column; gap: 4px; }
+  .mbar-row { display: flex; align-items: center; gap: 6px; }
+  .mbar-label { font-size: 10px; color: var(--text2); width: 44px; flex-shrink: 0; }
+  .mbar-track { flex: 1; height: 5px; background: var(--surface3); border-radius: 3px; overflow: hidden; }
+  .mbar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .mbar-val { font-size: 10px; color: var(--text2); width: 38px; text-align: right; flex-shrink: 0; }
+
+  /* NUTRIENT GRID — sodium, fiber, sat fat, protein */
+  .nutrient-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px; margin-bottom: 4px;
+  }
+  .nutrient-card {
+    background: var(--surface); border-radius: var(--radius-sm);
+    padding: 10px 12px; border: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .nutrient-card.warn { border-color: var(--warn-na); background: rgba(231,76,60,0.07); }
+  .nutrient-card.caution { border-color: var(--warn-ox); background: rgba(230,126,34,0.07); }
+  .nutrient-card.good-card { border-color: var(--good); background: rgba(39,174,96,0.07); }
+  .nutrient-header { display: flex; justify-content: space-between; align-items: center; }
+  .nutrient-name { font-size: 11px; color: var(--text2); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.4px; }
+  .nutrient-status { font-size: 10px; font-weight: 700; }
+  .nutrient-val { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1; }
+  .nutrient-goal { font-size: 10px; color: var(--text3); }
+  .nutrient-bar-track { height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+  .nutrient-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
+
+  /* TABS */
+  .tabs { display: flex; gap: 4px; padding: 10px 16px 0; background: var(--bg); }
+  .tab { flex: 1; padding: 9px 4px; text-align: center; font-size: 13px; font-weight: 600;
+    color: var(--text3); border-radius: var(--radius-sm); cursor: pointer;
+    transition: all 0.2s; border: 1px solid transparent; }
+  .tab.active { background: var(--surface2); color: var(--accent); border-color: var(--border); }
+
+  /* PANELS */
+  .panel { display: none; padding: 10px 14px; }
+  .panel.active { display: block; }
+
+  /* SEARCH */
+  .search-wrap { position: relative; margin-bottom: 10px; }
+  .search-input {
+    width: 100%; padding: 12px 48px 12px 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text); font-size: 15px;
+    outline: none; -webkit-appearance: none;
+  }
+  .search-input::placeholder { color: var(--text3); }
+  .search-input:focus { border-color: var(--accent2); }
+  .search-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: var(--accent2); border: none; border-radius: 8px;
+    color: var(--text); font-size: 18px; width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+
+  /* SCANNER */
+  .scanner-wrap { position: relative; margin-bottom: 10px; border-radius: var(--radius);
+    overflow: hidden; background: #000; display: none; }
+  .scanner-wrap.active { display: block; }
+  #scanner-video { width: 100%; display: block; max-height: 220px; object-fit: cover; }
+  .scanner-overlay { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; pointer-events: none; }
+  .scan-frame { width: 200px; height: 110px; border: 2px solid var(--accent);
+    border-radius: 10px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); position: relative; }
+  .scan-line { position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scan 2s ease-in-out infinite; }
+  @keyframes scan { 0%,100% { top: 10%; } 50% { top: 85%; } }
+  .scanner-label { text-align: center; font-size: 12px; color: var(--text2);
+    padding: 7px; background: var(--surface); }
+  .scan-toggle-btn {
+    width: 100%; padding: 12px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--accent); font-size: 14px; font-weight: 600;
+    cursor: pointer; margin-bottom: 10px; display: flex; align-items: center;
+    justify-content: center; gap: 8px;
+  }
+
+  /* RESULTS */
+  .results-list { display: flex; flex-direction: column; gap: 8px; }
+  .result-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px; cursor: pointer; transition: border-color 0.2s;
+  }
+  .result-card:active { border-color: var(--accent); }
+  .result-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .result-brand { font-size: 11px; color: var(--text2); margin-bottom: 7px; }
+  .result-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 7px; align-items: baseline; }
+  .result-cal { font-size: 19px; font-weight: 700; color: var(--accent); }
+  .result-cal span { font-size: 11px; color: var(--text2); font-weight: 400; }
+  .result-macro { font-size: 11px; color: var(--text2); }
+  .result-nutrients { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 7px; }
+  .result-nutrient { font-size: 11px; color: var(--text3); }
+  .result-nutrient.na-high { color: var(--warn-na); font-weight: 600; }
+  .flags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .flag { font-size: 11px; padding: 3px 7px; border-radius: 20px; font-weight: 600; }
+  .flag-ox { background: rgba(230,126,34,0.2); color: var(--warn-ox); border: 1px solid rgba(230,126,34,0.3); }
+  .flag-pu { background: rgba(142,68,173,0.2); color: var(--warn-pu); border: 1px solid rgba(142,68,173,0.3); }
+  .flag-na { background: rgba(231,76,60,0.2); color: var(--warn-na); border: 1px solid rgba(231,76,60,0.3); }
+  .flag-sf { background: rgba(192,57,43,0.2); color: var(--warn-sf); border: 1px solid rgba(192,57,43,0.3); }
+  .flag-ok { background: rgba(39,174,96,0.15); color: var(--good); border: 1px solid rgba(39,174,96,0.3); }
+
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+    z-index: 200; display: none; align-items: flex-end; justify-content: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+    padding: 18px; width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto; }
+  .modal-handle { width: 36px; height: 4px; background: var(--surface3);
+    border-radius: 2px; margin: 0 auto 14px; }
+  .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 3px; }
+  .modal-brand { font-size: 12px; color: var(--text2); margin-bottom: 14px; }
+  .modal-cal-big { font-size: 44px; font-weight: 700; color: var(--accent); line-height: 1; margin-bottom: 3px; }
+  .modal-cal-label { font-size: 12px; color: var(--text2); margin-bottom: 14px; }
+  .modal-macros { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-bottom: 10px; }
+  .modal-macro { background: var(--surface2); border-radius: var(--radius-sm); padding: 9px; text-align: center; }
+  .modal-macro-val { font-size: 15px; font-weight: 600; }
+  .modal-macro-label { font-size: 10px; color: var(--text2); }
+  /* extended nutrients in modal */
+  .modal-nutrients { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-bottom: 14px; }
+  .modal-nutrient { background: var(--surface2); border-radius: var(--radius-sm); padding: 9px; text-align: center; }
+  .modal-nutrient.warn { background: rgba(231,76,60,0.12); border: 1px solid rgba(231,76,60,0.3); }
+  .modal-nutrient.caution { background: rgba(230,126,34,0.12); border: 1px solid rgba(230,126,34,0.3); }
+  .modal-nutrient-val { font-size: 15px; font-weight: 600; }
+  .modal-nutrient-label { font-size: 10px; color: var(--text2); }
+  .modal-flags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+  .serving-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .serving-label { font-size: 13px; color: var(--text2); flex-shrink: 0; }
+  .serving-input { flex: 1; padding: 10px 12px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-size: 16px; text-align: center; outline: none; -webkit-appearance: none; }
+  .serving-unit { font-size: 13px; color: var(--text2); flex-shrink: 0; }
+  .add-btn { width: 100%; padding: 15px; background: var(--accent); border: none;
+    border-radius: var(--radius); color: #0f1f17; font-size: 16px; font-weight: 700;
+    cursor: pointer; margin-bottom: 9px; }
+  .cancel-btn { width: 100%; padding: 13px; background: transparent; border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text2); font-size: 14px; cursor: pointer; }
+
+  /* LOG */
+  .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .log-title { font-size: 15px; font-weight: 600; }
+  .clear-btn { font-size: 12px; color: var(--warn-na); background: none; border: none; cursor: pointer; padding: 4px 8px; }
+  .log-empty { text-align: center; padding: 36px 20px; color: var(--text3); font-size: 14px; }
+  .log-item { background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 11px 12px; margin-bottom: 7px;
+    display: flex; align-items: center; gap: 10px; }
+  .log-item-info { flex: 1; min-width: 0; }
+  .log-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .log-item-detail { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .log-item-nutrients { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .log-item-nutrients .na-warn { color: var(--warn-na); font-weight: 600; }
+  .log-item-cal { font-size: 15px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+  .log-item-del { background: none; border: none; color: var(--text3); font-size: 18px; cursor: pointer; padding: 4px; flex-shrink: 0; }
+  .log-item-flags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+
+  /* LEGEND */
+  .legend { background: var(--surface); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+  .legend-title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .legend-flag { width: 80px; flex-shrink: 0; }
+  .legend-desc { font-size: 11px; color: var(--text2); }
+
+  /* HISTORY */
+  .history-day { margin-bottom: 14px; }
+  .history-day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .history-day-label { font-size: 13px; font-weight: 600; color: var(--text2); }
+  .history-day-cal { font-size: 13px; color: var(--accent); }
+  .history-bar-track { height: 5px; background: var(--surface3); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+  .history-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .history-nutrient-row { display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .history-nutrient-chip { font-size: 11px; color: var(--text3); background: var(--surface2);
+    padding: 3px 8px; border-radius: 20px; }
+  .history-nutrient-chip.warn { color: var(--warn-na); background: rgba(231,76,60,0.1); }
+  .history-nutrient-chip.good { color: var(--good); background: rgba(39,174,96,0.1); }
+
+  /* STATES */
+  .loading { text-align: center; padding: 20px; color: var(--text2); font-size: 13px; }
+  .error-msg { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3);
+    border-radius: var(--radius-sm); padding: 10px; font-size: 12px; color: var(--warn-na); margin-bottom: 10px; }
+  .section-label { font-size: 11px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; margin-top: 2px; }
+
+  /* BOTTOM NAV */
+  .bottom-nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 480px; background: var(--surface);
+    border-top: 1px solid var(--border); display: flex; padding: 8px 0 20px; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; background: none; border: none; color: var(--text3);
+    font-size: 10px; cursor: pointer; padding: 5px 4px; transition: color 0.2s; }
+  .nav-btn.active { color: var(--accent); }
+  .nav-icon { font-size: 21px; line-height: 1; }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+
+  /* MANUAL ENTRY BUTTON */
+  .manual-entry-btn {
+    width: 100%; padding: 12px; background: transparent;
+    border: 1px dashed var(--accent2); border-radius: var(--radius);
+    color: var(--accent); font-size: 14px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center;
+    justify-content: center; gap: 8px; margin-bottom: 10px;
+  }
+
+  /* MANUAL ENTRY MODAL FIELDS */
+  .manual-field-label {
+    font-size: 12px; color: var(--text2); margin-bottom: 5px;
+    margin-top: 10px; font-weight: 600;
+  }
+  .manual-required { color: var(--warn-na); }
+  .manual-optional { color: var(--text3); font-weight: 400; }
+  .manual-note { color: var(--text3); font-weight: 400; font-size: 11px; }
+  .manual-section-title {
+    font-size: 12px; font-weight: 700; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 0.4px;
+    margin-top: 16px; margin-bottom: 8px;
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .manual-input {
+    width: 100%; padding: 10px 12px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-size: 15px; outline: none;
+    -webkit-appearance: none; margin-bottom: 2px;
+  }
+  .manual-input:focus { border-color: var(--accent2); }
+  .manual-input.manual-num { padding-right: 40px; }
+  .manual-input-wrap { position: relative; }
+  .manual-unit {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; color: var(--text3); pointer-events: none;
+  }
+  .manual-grid-3 {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 4px;
+  }
+  .manual-field { display: flex; flex-direction: column; }
+  .manual-flags-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .manual-flag-btn {
+    font-size: 12px; padding: 6px 10px; border-radius: 20px; cursor: pointer;
+    border: 1px solid var(--border); color: var(--text3); background: var(--surface2);
+    font-weight: 600; transition: all 0.15s; user-select: none;
+  }
+  .manual-flag-btn.active-ox { background: rgba(230,126,34,0.2); color: var(--warn-ox); border-color: rgba(230,126,34,0.4); }
+  .manual-flag-btn.active-pu { background: rgba(142,68,173,0.2); color: var(--warn-pu); border-color: rgba(142,68,173,0.4); }
+  .manual-flag-btn.active-na { background: rgba(231,76,60,0.2); color: var(--warn-na); border-color: rgba(231,76,60,0.4); }
+  .manual-flag-btn.active-sf { background: rgba(192,57,43,0.2); color: var(--warn-sf); border-color: rgba(192,57,43,0.4); }
+  .manual-flag-hint { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+  .manual-error {
+    background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3);
+    border-radius: var(--radius-sm); padding: 10px 12px; font-size: 13px;
+    color: var(--warn-na); margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="app-name">🌿 NutriGuard</div>
+    <div class="date-label" id="date-label"></div>
+  </div>
+
+  <!-- Calorie ring + macro bars -->
+  <div class="cal-summary">
+    <div class="ring-wrap">
+      <svg width="76" height="76" viewBox="0 0 76 76">
+        <circle class="ring-bg" cx="38" cy="38" r="32"/>
+        <circle class="ring-fill" id="cal-ring" cx="38" cy="38" r="32"
+          stroke-dasharray="201.1" stroke-dashoffset="201.1"/>
+      </svg>
+      <div class="ring-text">
+        <div class="ring-cal" id="ring-cal-num">0</div>
+        <div class="ring-sub">eaten</div>
+      </div>
+    </div>
+    <div class="cal-right">
+      <div class="cal-stats-row">
+        <div class="cal-stat">
+          <div class="cal-stat-val" id="cal-remaining">2300</div>
+          <div class="cal-stat-label">remaining</div>
+        </div>
+        <div class="cal-stat">
+          <div class="cal-stat-val">2300</div>
+          <div class="cal-stat-label">goal</div>
+        </div>
+      </div>
+      <div class="macro-bars">
+        <div class="mbar-row">
+          <div class="mbar-label">Protein</div>
+          <div class="mbar-track"><div class="mbar-fill" id="bar-protein" style="width:0%;background:#4caf7d"></div></div>
+          <div class="mbar-val" id="val-protein">0g</div>
+        </div>
+        <div class="mbar-row">
+          <div class="mbar-label">Carbs</div>
+          <div class="mbar-track"><div class="mbar-fill" id="bar-carbs" style="width:0%;background:#f39c12"></div></div>
+          <div class="mbar-val" id="val-carbs">0g</div>
+        </div>
+        <div class="mbar-row">
+          <div class="mbar-label">Fat</div>
+          <div class="mbar-track"><div class="mbar-fill" id="bar-fat" style="width:0%;background:#e67e22"></div></div>
+          <div class="mbar-val" id="val-fat">0g</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Extended nutrient grid -->
+  <div class="nutrient-grid">
+    <div class="nutrient-card" id="card-protein">
+      <div class="nutrient-header">
+        <div class="nutrient-name">Protein</div>
+        <div class="nutrient-status" id="status-protein"></div>
+      </div>
+      <div class="nutrient-val" id="ng-protein">0g</div>
+      <div class="nutrient-goal">Goal: 160–180g</div>
+      <div class="nutrient-bar-track">
+        <div class="nutrient-bar-fill" id="ngbar-protein" style="width:0%;background:#4caf7d"></div>
+      </div>
+    </div>
+    <div class="nutrient-card" id="card-sodium">
+      <div class="nutrient-header">
+        <div class="nutrient-name">Sodium</div>
+        <div class="nutrient-status" id="status-sodium"></div>
+      </div>
+      <div class="nutrient-val" id="ng-sodium">0mg</div>
+      <div class="nutrient-goal">Limit: 1,500mg</div>
+      <div class="nutrient-bar-track">
+        <div class="nutrient-bar-fill" id="ngbar-sodium" style="width:0%;background:#4caf7d"></div>
+      </div>
+    </div>
+    <div class="nutrient-card" id="card-fiber">
+      <div class="nutrient-header">
+        <div class="nutrient-name">Fiber</div>
+        <div class="nutrient-status" id="status-fiber"></div>
+      </div>
+      <div class="nutrient-val" id="ng-fiber">0g</div>
+      <div class="nutrient-goal">Goal: 30–35g</div>
+      <div class="nutrient-bar-track">
+        <div class="nutrient-bar-fill" id="ngbar-fiber" style="width:0%;background:#4caf7d"></div>
+      </div>
+    </div>
+    <div class="nutrient-card" id="card-satfat">
+      <div class="nutrient-header">
+        <div class="nutrient-name">Sat Fat</div>
+        <div class="nutrient-status" id="status-satfat"></div>
+      </div>
+      <div class="nutrient-val" id="ng-satfat">0g</div>
+      <div class="nutrient-goal">Limit: 15g</div>
+      <div class="nutrient-bar-track">
+        <div class="nutrient-bar-fill" id="ngbar-satfat" style="width:0%;background:#4caf7d"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tabs" id="main-tabs">
+  <div class="tab active" data-tab="search">Search</div>
+  <div class="tab" data-tab="log">Today</div>
+  <div class="tab" data-tab="history">History</div>
+</div>
+
+<!-- SEARCH PANEL -->
+<div class="panel active" id="panel-search">
+  <div style="height:10px"></div>
+  <button class="scan-toggle-btn" id="scan-toggle-btn">
+    <span>📷</span> Scan Barcode
+  </button>
+  <div class="scanner-wrap" id="scanner-wrap">
+    <video id="scanner-video" autoplay playsinline muted></video>
+    <div class="scanner-overlay">
+      <div class="scan-frame"><div class="scan-line"></div></div>
+    </div>
+  </div>
+  <div class="scanner-label" id="scanner-label" style="display:none">Point camera at barcode</div>
+  <div class="search-wrap">
+    <input class="search-input" id="search-input" type="text"
+      placeholder="Search food by name…" autocomplete="off" autocorrect="off">
+    <button class="search-btn" id="search-btn">🔍</button>
+  </div>
+  <div id="search-status"></div>
+  <div class="results-list" id="results-list"></div>
+  <div style="height:14px"></div>
+  <button class="manual-entry-btn" id="manual-entry-btn">
+    <span>✏️</span> Enter Food Manually
+  </button>
+</div>
+
+<!-- TODAY PANEL -->
+<div class="panel" id="panel-log">
+  <div style="height:10px"></div>
+  <div class="legend">
+    <div class="legend-title">Health Flag Key</div>
+    <div class="legend-row">
+      <div class="legend-flag"><span class="flag flag-ox">⚠ Oxalate</span></div>
+      <div class="legend-desc">High oxalate — kidney stone risk</div>
+    </div>
+    <div class="legend-row">
+      <div class="legend-flag"><span class="flag flag-pu">⚠ Purine</span></div>
+      <div class="legend-desc">High purine — gout risk</div>
+    </div>
+    <div class="legend-row">
+      <div class="legend-flag"><span class="flag flag-na">⚠ Sodium</span></div>
+      <div class="legend-desc">High sodium — blood pressure risk</div>
+    </div>
+    <div class="legend-row">
+      <div class="legend-flag"><span class="flag flag-sf">⚠ Sat Fat</span></div>
+      <div class="legend-desc">High saturated fat — heart health</div>
+    </div>
+  </div>
+  <div class="log-header">
+    <div class="log-title">Today's Food Log</div>
+    <button class="clear-btn" id="clear-btn">Clear Day</button>
+  </div>
+  <div id="log-list"></div>
+</div>
+
+<!-- HISTORY PANEL -->
+<div class="panel" id="panel-history">
+  <div style="height:10px"></div>
+  <div id="history-list"></div>
+</div>
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-brand" id="modal-brand"></div>
+    <div class="modal-cal-big" id="modal-cal-big">0</div>
+    <div class="modal-cal-label">calories per serving</div>
+    <div class="modal-macros">
+      <div class="modal-macro">
+        <div class="modal-macro-val" id="modal-protein">0g</div>
+        <div class="modal-macro-label">Protein</div>
+      </div>
+      <div class="modal-macro">
+        <div class="modal-macro-val" id="modal-carbs">0g</div>
+        <div class="modal-macro-label">Carbs</div>
+      </div>
+      <div class="modal-macro">
+        <div class="modal-macro-val" id="modal-fat">0g</div>
+        <div class="modal-macro-label">Fat</div>
+      </div>
+    </div>
+    <div class="modal-nutrients">
+      <div class="modal-nutrient" id="modal-card-sodium">
+        <div class="modal-nutrient-val" id="modal-sodium">0mg</div>
+        <div class="modal-nutrient-label">Sodium</div>
+      </div>
+      <div class="modal-nutrient" id="modal-card-fiber">
+        <div class="modal-nutrient-val" id="modal-fiber">0g</div>
+        <div class="modal-nutrient-label">Fiber</div>
+      </div>
+      <div class="modal-nutrient" id="modal-card-satfat">
+        <div class="modal-nutrient-val" id="modal-satfat">0g</div>
+        <div class="modal-nutrient-label">Sat Fat</div>
+      </div>
+    </div>
+    <div class="modal-flags" id="modal-flags"></div>
+    <div class="serving-row">
+      <div class="serving-label">Servings:</div>
+      <input class="serving-input" id="serving-input" type="number"
+        value="1" min="0.25" max="10" step="0.25">
+      <div class="serving-unit" id="serving-unit">serving</div>
+    </div>
+    <button class="add-btn" id="modal-add-btn">Add to Log</button>
+    <button class="cancel-btn" id="modal-cancel-btn">Cancel</button>
+  </div>
+</div>
+
+<!-- MANUAL ENTRY MODAL -->
+<div class="modal-overlay" id="manual-overlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="margin-bottom:14px">Add Food Manually</div>
+
+    <div class="manual-field-label">Food Name <span class="manual-required">*</span></div>
+    <input class="manual-input" id="man-name" type="text" placeholder="e.g. Grilled salmon fillet" autocomplete="off">
+
+    <div class="manual-field-label">Brand / Source <span class="manual-optional">(optional)</span></div>
+    <input class="manual-input" id="man-brand" type="text" placeholder="e.g. Home cooked" autocomplete="off">
+
+    <div class="manual-section-title">Calories &amp; Macros <span class="manual-required">* required</span></div>
+    <div class="manual-grid-3">
+      <div class="manual-field">
+        <div class="manual-field-label">Calories <span class="manual-required">*</span></div>
+        <div class="manual-input-wrap">
+          <input class="manual-input manual-num" id="man-cal" type="number" placeholder="0" min="0">
+          <span class="manual-unit">kcal</span>
+        </div>
+      </div>
+      <div class="manual-field">
+        <div class="manual-field-label">Protein</div>
+        <div class="manual-input-wrap">
+          <input class="manual-input manual-num" id="man-protein" type="number" placeholder="0" min="0" step="0.1">
+          <span class="manual-unit">g</span>
+        </div>
+      </div>
+      <div class="manual-field">
+        <div class="manual-field-label">Carbs</div>
+        <div class="manual-input-wrap">
+          <input class="manual-input manual-num" id="man-carbs" type="number" placeholder="0" min="0" step="0.1">
+          <span class="manual-unit">g</span>
+        </div>
+      </div>
+      <div class="manual-field">
+        <div class="manual-field-label">Fat</div>
+        <div class="manual-input-wrap">
+          <input class="manual-input manual-num" id="man-fat" type="number" placeholder="0" min="0" step="0.1">
+          <span class="manual-unit">g</span>
+        </div>
+      </div>
+      <div class="manual-field">
+        <div class="manual-field-label">Fiber</div>
+        <div class="manual-input-wrap">
+          <input class="manual-input manual-num" id="man-fiber" type="number" placeholder="0" min="0" step="0.1">
+          <span class="manual-unit">g</span>
+        </div>
+      </div>
+      <div class="manual-field">
+        <div class="manual-field-label">Sat Fat</div>
+        <div class="manual-input-wrap">
+          <input class="manual-input manual-num" id="man-satfat" type="number" placeholder="0" min="0" step="0.1">
+          <span class="manual-unit">g</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="manual-section-title">Sodium <span class="manual-note">— important for your BP target</span></div>
+    <div class="manual-input-wrap" style="margin-bottom:16px">
+      <input class="manual-input manual-num" id="man-sodium" type="number" placeholder="0" min="0">
+      <span class="manual-unit">mg</span>
+    </div>
+
+    <div class="manual-section-title">Health Flags <span class="manual-optional">(tap to mark)</span></div>
+    <div class="manual-flags-row">
+      <div class="manual-flag-btn" data-flag="ox" id="mflag-ox">⚠ Oxalate</div>
+      <div class="manual-flag-btn" data-flag="pu" id="mflag-pu">⚠ Purine</div>
+      <div class="manual-flag-btn" data-flag="na" id="mflag-na">⚠ Sodium</div>
+      <div class="manual-flag-btn" data-flag="sf" id="mflag-sf">⚠ Sat Fat</div>
+    </div>
+    <div class="manual-flag-hint">Or leave blank — flags auto-detected from food name</div>
+
+    <div id="manual-error" class="manual-error" style="display:none"></div>
+
+    <button class="add-btn" id="manual-add-btn" style="margin-top:16px">Add to Log</button>
+    <button class="cancel-btn" id="manual-cancel-btn">Cancel</button>
+  </div>
+</div>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-nav="search"><span class="nav-icon">🔍</span>Search</button>
+  <button class="nav-btn" data-nav="log"><span class="nav-icon">📋</span>Today</button>
+  <button class="nav-btn" data-nav="history"><span class="nav-icon">📅</span>History</button>
+</nav>
+
+<script>
+// ── HEALTH FLAG DATABASES ────────────────────────────────────────────────────
+const HIGH_OXALATE = ['spinach','almonds','almond','beet','beets','swiss chard','chard',
+  'rhubarb','peanut','peanuts','chocolate','cocoa','nuts','cashew','tahini','soy','tofu',
+  'miso','wheat bran','okra','leek','parsley','chives','endive','kale','blackberry',
+  'blackberries','fig','figs','raspberry','raspberries','celery','green pepper','eggplant',
+  'sesame','black bean','navy bean','refried','dark chocolate'];
+const HIGH_PURINE = ['sardine','sardines','anchovies','anchovy','herring','mackerel',
+  'organ','liver','kidney','sweetbread','bacon','veal','venison','scallop','scallops',
+  'shrimp','lobster','crab','mussel','mussels','turkey','goose','duck','beer','ale',
+  'yeast','asparagus','mushroom','spinach','cauliflower','peas'];
+const HIGH_SODIUM = ['pickle','pickled','soy sauce','miso','salted','pretzels','chips',
+  'deli','canned soup','soup','processed','ham','pepperoni','salami','hot dog','sausage',
+  'bacon','cheese','feta','parmesan','blue cheese','bread','bagel','cracker','frozen',
+  'fast food','ranch','ketchup','mustard','condiment','sauce','seasoning'];
+const HIGH_SAT_FAT = ['butter','cream','whole milk','full fat','cheddar','brie','camembert',
+  'coconut oil','palm oil','lard','ghee','beef','lamb','pork','bacon','sausage','pepperoni',
+  'salami','cream cheese','ice cream','pastry','croissant','cake','cookie','doughnut','fried'];
+
+// ── GOALS ────────────────────────────────────────────────────────────────────
+const GOALS = {
+  calories: 2300, protein: 170, carbs: 230, fat: 77,
+  sodium: 1500, fiber: 32, satFat: 15
+};
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let todayLog = [], weekHistory = {}, selectedFood = null;
+let scannerActive = false, scannerStream = null, scanInterval = null;
+
+// ── STORAGE ──────────────────────────────────────────────────────────────────
+const TODAY_KEY = () => new Date().toISOString().slice(0,10);
+
+function saveData() {
+  const key = TODAY_KEY();
+  const stored = JSON.parse(localStorage.getItem('nutriguard_v2') || '{}');
+  stored[key] = todayLog;
+  const keys = Object.keys(stored).sort().reverse().slice(0,7);
+  const trimmed = {};
+  keys.forEach(k => trimmed[k] = stored[k]);
+  localStorage.setItem('nutriguard_v2', JSON.stringify(trimmed));
+  weekHistory = trimmed;
+}
+
+function loadData() {
+  const stored = JSON.parse(localStorage.getItem('nutriguard_v2') || '{}');
+  weekHistory = stored;
+  todayLog = stored[TODAY_KEY()] || [];
+}
+
+// ── FLAGS ────────────────────────────────────────────────────────────────────
+function getFlags(name, sodium, satFat) {
+  const n = (name||'').toLowerCase();
+  const flags = [];
+  if (HIGH_OXALATE.some(w => n.includes(w))) flags.push('ox');
+  if (HIGH_PURINE.some(w => n.includes(w))) flags.push('pu');
+  if (sodium > 400 || HIGH_SODIUM.some(w => n.includes(w))) flags.push('na');
+  if (satFat > 5 || HIGH_SAT_FAT.some(w => n.includes(w))) flags.push('sf');
+  return flags;
+}
+
+function renderFlags(flags) {
+  if (!flags.length) return '<span class="flag flag-ok">✓ Safe</span>';
+  const map = {
+    ox:['flag-ox','⚠ Oxalate'], pu:['flag-pu','⚠ Purine'],
+    na:['flag-na','⚠ Sodium'], sf:['flag-sf','⚠ Sat Fat']
+  };
+  return flags.map(f=>`<span class="flag ${map[f][0]}">${map[f][1]}</span>`).join('');
+}
+
+// ── TOTALS ───────────────────────────────────────────────────────────────────
+function getTotals(log) {
+  return log.reduce((s,i) => ({
+    calories: s.calories + (i.calories||0),
+    protein:  s.protein  + (i.protein||0),
+    carbs:    s.carbs    + (i.carbs||0),
+    fat:      s.fat      + (i.fat||0),
+    sodium:   s.sodium   + (i.sodium||0),
+    fiber:    s.fiber    + (i.fiber||0),
+    satFat:   s.satFat   + (i.satFat||0),
+  }), {calories:0,protein:0,carbs:0,fat:0,sodium:0,fiber:0,satFat:0});
+}
+
+// ── HEADER UPDATE ─────────────────────────────────────────────────────────────
+function updateHeader() {
+  const t = getTotals(todayLog);
+
+  // Calorie ring
+  document.getElementById('ring-cal-num').textContent = Math.round(t.calories);
+  document.getElementById('cal-remaining').textContent = Math.max(0, GOALS.calories - Math.round(t.calories));
+  const pct = Math.min(t.calories / GOALS.calories, 1);
+  const circ = 201.1;
+  const ring = document.getElementById('cal-ring');
+  ring.style.strokeDashoffset = circ - pct * circ;
+  ring.style.stroke = t.calories > GOALS.calories ? '#e74c3c' : '#4caf7d';
+
+  // Macro bars
+  const setBar = (id, val, goal) => {
+    document.getElementById('bar-'+id).style.width = Math.min(val/goal*100,100)+'%';
+    document.getElementById('val-'+id).textContent = Math.round(val)+'g';
+  };
+  setBar('protein', t.protein, GOALS.protein);
+  setBar('carbs', t.carbs, GOALS.carbs);
+  setBar('fat', t.fat, GOALS.fat);
+
+  // Nutrient cards
+  updateNutrientCard('protein', t.protein, GOALS.protein, 'g', false,
+    v => v >= 160 ? ['good-card','✓'] : v >= 100 ? ['','~'] : ['','low']);
+  updateNutrientCard('sodium', t.sodium, GOALS.sodium, 'mg', true,
+    v => v > 1500 ? ['warn','OVER'] : v > 1200 ? ['caution','near'] : ['good-card','✓']);
+  updateNutrientCard('fiber', t.fiber, GOALS.fiber, 'g', false,
+    v => v >= 30 ? ['good-card','✓'] : v >= 20 ? ['','~'] : ['','low']);
+  updateNutrientCard('satfat', t.satFat, GOALS.satFat, 'g', true,
+    v => v > 15 ? ['warn','OVER'] : v > 10 ? ['caution','near'] : ['good-card','✓']);
+}
+
+function updateNutrientCard(id, val, goal, unit, isLimit, statusFn) {
+  const [cardClass, statusText] = statusFn(val);
+  const card = document.getElementById('card-'+id);
+  card.className = 'nutrient-card' + (cardClass ? ' '+cardClass : '');
+  document.getElementById('ng-'+id).textContent = Math.round(val*10)/10 + unit;
+  document.getElementById('status-'+id).textContent = statusText;
+  const pct = isLimit
+    ? Math.min(val/goal*100, 100)
+    : Math.min(val/goal*100, 100);
+  const color = isLimit
+    ? (val > goal ? '#e74c3c' : val > goal*0.8 ? '#e67e22' : '#4caf7d')
+    : (val >= goal ? '#4caf7d' : val >= goal*0.6 ? '#f39c12' : '#e67e22');
+  const bar = document.getElementById('ngbar-'+id);
+  bar.style.width = pct+'%';
+  bar.style.background = color;
+}
+
+// ── DATE ─────────────────────────────────────────────────────────────────────
+function updateDate() {
+  const d = new Date();
+  document.getElementById('date-label').textContent =
+    d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+}
+
+// ── API: USDA ────────────────────────────────────────────────────────────────
+async function searchUSDA(query) {
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=8&dataType=SR%20Legacy,Foundation,Survey%20(FNDDS)&api_key=DEMO_KEY`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('USDA failed');
+  const data = await r.json();
+  return (data.foods||[]).map(f => {
+    const get = id => (f.foodNutrients||[]).find(n=>n.nutrientId===id)?.value||0;
+    const sodium = get(1093), satFat = get(1258);
+    return {
+      id:'usda_'+f.fdcId, name:f.description,
+      brand: f.brandOwner||'USDA',
+      calories: Math.round(get(1008)),
+      protein: Math.round(get(1003)*10)/10,
+      carbs: Math.round(get(1005)*10)/10,
+      fat: Math.round(get(1004)*10)/10,
+      sodium: Math.round(sodium),
+      fiber: Math.round(get(1079)*10)/10,
+      satFat: Math.round(satFat*10)/10,
+      servingSize: f.servingSize||100,
+      servingUnit: f.servingSizeUnit||'g',
+      flags: getFlags(f.description, sodium, satFat)
+    };
+  });
+}
+
+// ── API: OPEN FOOD FACTS ─────────────────────────────────────────────────────
+async function searchOFF(query) {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=6`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('OFF failed');
+  const data = await r.json();
+  return (data.products||[]).filter(p=>p.product_name&&p.nutriments).map(p => {
+    const n = p.nutriments;
+    const sodium = (n.sodium_100g||0)*1000, satFat = n['saturated-fat_100g']||0;
+    return {
+      id:'off_'+p.code, name:p.product_name,
+      brand:p.brands||'Open Food Facts',
+      calories: Math.round(n['energy-kcal_100g']||n['energy-kcal']||0),
+      protein: Math.round((n.proteins_100g||0)*10)/10,
+      carbs: Math.round((n.carbohydrates_100g||0)*10)/10,
+      fat: Math.round((n.fat_100g||0)*10)/10,
+      sodium: Math.round(sodium),
+      fiber: Math.round((n.fiber_100g||0)*10)/10,
+      satFat: Math.round(satFat*10)/10,
+      servingSize: p.serving_size||'100g',
+      servingUnit:'serving',
+      flags: getFlags(p.product_name, sodium, satFat)
+    };
+  });
+}
+
+async function searchByBarcode(barcode) {
+  const url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Barcode lookup failed');
+  const data = await r.json();
+  if (data.status!==1||!data.product) throw new Error('Not found');
+  const p = data.product, n = p.nutriments||{};
+  const sodium=(n.sodium_100g||0)*1000, satFat=n['saturated-fat_100g']||0;
+  return [{
+    id:'off_'+barcode, name:p.product_name||'Unknown',
+    brand:p.brands||'',
+    calories: Math.round(n['energy-kcal_100g']||n['energy-kcal']||0),
+    protein: Math.round((n.proteins_100g||0)*10)/10,
+    carbs: Math.round((n.carbohydrates_100g||0)*10)/10,
+    fat: Math.round((n.fat_100g||0)*10)/10,
+    sodium: Math.round(sodium),
+    fiber: Math.round((n.fiber_100g||0)*10)/10,
+    satFat: Math.round(satFat*10)/10,
+    servingSize: p.serving_size||'100g', servingUnit:'serving',
+    flags: getFlags(p.product_name||'', sodium, satFat)
+  }];
+}
+
+// ── RENDER RESULTS ────────────────────────────────────────────────────────────
+function renderResults(foods) {
+  const list = document.getElementById('results-list');
+  if (!foods.length) {
+    list.innerHTML = '<div class="loading">No results found. Try different search terms.</div>';
+    return;
+  }
+  list.innerHTML = foods.map((f,i) => `
+    <div class="result-card" data-idx="${i}">
+      <div class="result-name">${f.name}</div>
+      <div class="result-brand">${f.brand}</div>
+      <div class="result-meta">
+        <div><span class="result-cal">${f.calories}<span> cal</span></span></div>
+        <div class="result-macro">P: ${f.protein}g</div>
+        <div class="result-macro">C: ${f.carbs}g</div>
+        <div class="result-macro">F: ${f.fat}g</div>
+      </div>
+      <div class="result-nutrients">
+        <span class="result-nutrient ${f.sodium>400?'na-high':''}">Na: ${f.sodium}mg</span>
+        <span class="result-nutrient">Fiber: ${f.fiber}g</span>
+        <span class="result-nutrient">Sat Fat: ${f.satFat}g</span>
+      </div>
+      <div class="flags">${renderFlags(f.flags)}</div>
+    </div>
+  `).join('');
+  list._foods = foods;
+  list.querySelectorAll('.result-card').forEach(card => {
+    card.addEventListener('click', () => openModal(list._foods[+card.dataset.idx]));
+  });
+}
+
+// ── MODAL ────────────────────────────────────────────────────────────────────
+function openModal(food) {
+  selectedFood = food;
+  document.getElementById('modal-title').textContent = food.name;
+  document.getElementById('modal-brand').textContent = food.brand;
+  document.getElementById('modal-cal-big').textContent = food.calories;
+  document.getElementById('modal-protein').textContent = food.protein+'g';
+  document.getElementById('modal-carbs').textContent = food.carbs+'g';
+  document.getElementById('modal-fat').textContent = food.fat+'g';
+  // Extended nutrients
+  const sodEl = document.getElementById('modal-sodium');
+  sodEl.textContent = food.sodium+'mg';
+  const sodCard = document.getElementById('modal-card-sodium');
+  sodCard.className = 'modal-nutrient' + (food.sodium>400?' warn':'');
+  document.getElementById('modal-fiber').textContent = food.fiber+'g';
+  const sfEl = document.getElementById('modal-satfat');
+  sfEl.textContent = food.satFat+'g';
+  const sfCard = document.getElementById('modal-card-satfat');
+  sfCard.className = 'modal-nutrient' + (food.satFat>5?' caution':'');
+  document.getElementById('modal-flags').innerHTML = renderFlags(food.flags);
+  document.getElementById('serving-input').value = 1;
+  document.getElementById('serving-unit').textContent = food.servingUnit||'serving';
+  document.getElementById('modal-overlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  selectedFood = null;
+}
+
+// ── ADD TO LOG ────────────────────────────────────────────────────────────────
+function addToLog() {
+  if (!selectedFood) return;
+  const servings = parseFloat(document.getElementById('serving-input').value)||1;
+  const m = v => Math.round(v*servings*10)/10;
+  todayLog.push({
+    id: Date.now(),
+    name: selectedFood.name,
+    brand: selectedFood.brand,
+    calories: Math.round(selectedFood.calories*servings),
+    protein: m(selectedFood.protein),
+    carbs: m(selectedFood.carbs),
+    fat: m(selectedFood.fat),
+    sodium: Math.round(selectedFood.sodium*servings),
+    fiber: m(selectedFood.fiber),
+    satFat: m(selectedFood.satFat),
+    servings,
+    servingUnit: selectedFood.servingUnit,
+    flags: selectedFood.flags,
+    time: new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
+  });
+  saveData(); renderLog(); updateHeader(); closeModal();
+}
+
+// ── RENDER LOG ────────────────────────────────────────────────────────────────
+function deleteLogItem(id) {
+  todayLog = todayLog.filter(i=>i.id!==id);
+  saveData(); renderLog(); updateHeader();
+}
+
+function renderLog() {
+  const list = document.getElementById('log-list');
+  if (!todayLog.length) {
+    list.innerHTML = '<div class="log-empty">No food logged today.<br>Search or scan to add food.</div>';
+    return;
+  }
+  list.innerHTML = todayLog.map(item => `
+    <div class="log-item">
+      <div class="log-item-info">
+        <div class="log-item-name">${item.name}</div>
+        <div class="log-item-detail">${item.servings} ${item.servingUnit} · ${item.time}</div>
+        <div class="log-item-nutrients">
+          P:${item.protein}g C:${item.carbs}g F:${item.fat}g
+          <span class="${item.sodium>400?'na-warn':''}"> · Na:${item.sodium}mg</span>
+          · Fiber:${item.fiber}g · SF:${item.satFat}g
+        </div>
+        <div class="log-item-flags">${renderFlags(item.flags)}</div>
+      </div>
+      <div class="log-item-cal">${item.calories}</div>
+      <button class="log-item-del" data-id="${item.id}">×</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.log-item-del').forEach(btn => {
+    btn.addEventListener('click', () => deleteLogItem(+btn.dataset.id));
+  });
+}
+
+// ── HISTORY ───────────────────────────────────────────────────────────────────
+function renderHistory() {
+  const div = document.getElementById('history-list');
+  const today = TODAY_KEY();
+  const pastKeys = Object.keys(weekHistory).sort().reverse().filter(k=>k!==today);
+  if (!pastKeys.length) {
+    div.innerHTML = '<div class="log-empty">No history yet.<br>Past days will appear here.</div>';
+    return;
+  }
+  div.innerHTML = pastKeys.map(k => {
+    const items = weekHistory[k]||[];
+    const t = getTotals(items);
+    const pct = Math.min(t.calories/GOALS.calories*100,100);
+    const color = t.calories>GOALS.calories?'#e74c3c':t.calories>GOALS.calories*0.9?'#f39c12':'#4caf7d';
+    const d = new Date(k+'T12:00:00');
+    const label = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const naClass = t.sodium>1500?'warn':t.sodium>1200?'':'good';
+    const fiberClass = t.fiber>=30?'good':'';
+    return `
+      <div class="history-day">
+        <div class="history-day-header">
+          <div class="history-day-label">${label}</div>
+          <div class="history-day-cal">${Math.round(t.calories)} / ${GOALS.calories} cal</div>
+        </div>
+        <div class="history-bar-track">
+          <div class="history-bar-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <div class="history-nutrient-row">
+          <span class="history-nutrient-chip">P: ${Math.round(t.protein)}g</span>
+          <span class="history-nutrient-chip ${naClass}">Na: ${Math.round(t.sodium)}mg</span>
+          <span class="history-nutrient-chip ${fiberClass}">Fiber: ${Math.round(t.fiber)}g</span>
+          <span class="history-nutrient-chip">SF: ${Math.round(t.satFat)}g</span>
+        </div>
+        ${items.map(i=>`
+          <div class="log-item" style="margin-bottom:4px">
+            <div class="log-item-info">
+              <div class="log-item-name">${i.name}</div>
+              <div class="log-item-nutrients">
+                P:${i.protein}g · Na:${i.sodium}mg · Fiber:${i.fiber}g
+              </div>
+              <div class="log-item-flags">${renderFlags(i.flags)}</div>
+            </div>
+            <div class="log-item-cal">${i.calories}</div>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+}
+
+// ── SCANNER ───────────────────────────────────────────────────────────────────
+async function startScanner() {
+  if (scannerActive) { stopScanner(); return; }
+  const wrap = document.getElementById('scanner-wrap');
+  const video = document.getElementById('scanner-video');
+  const label = document.getElementById('scanner-label');
+  const btn = document.getElementById('scan-toggle-btn');
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
+    });
+    video.srcObject = scannerStream;
+    wrap.classList.add('active');
+    label.style.display='block';
+    btn.innerHTML='<span>⏹</span> Stop Scanner';
+    scannerActive=true;
+    if ('BarcodeDetector' in window) {
+      const bd = new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+      scanInterval = setInterval(async()=>{
+        if(!scannerActive)return;
+        try {
+          const codes = await bd.detect(video);
+          if(codes.length){stopScanner();handleBarcodeResult(codes[0].rawValue);}
+        }catch(e){}
+      },500);
+    } else {
+      label.textContent='BarcodeDetector not supported. Try Chrome on Android.';
+    }
+  } catch(e) {
+    document.getElementById('search-status').innerHTML=
+      '<div class="error-msg">Camera access denied. Allow camera permissions and try again.</div>';
+  }
+}
+
+function stopScanner() {
+  const wrap=document.getElementById('scanner-wrap');
+  const label=document.getElementById('scanner-label');
+  const btn=document.getElementById('scan-toggle-btn');
+  const video=document.getElementById('scanner-video');
+  if(scannerStream){scannerStream.getTracks().forEach(t=>t.stop());scannerStream=null;}
+  if(scanInterval){clearInterval(scanInterval);scanInterval=null;}
+  wrap.classList.remove('active');
+  label.style.display='none';
+  btn.innerHTML='<span>📷</span> Scan Barcode';
+  video.srcObject=null;
+  scannerActive=false;
+}
+
+async function handleBarcodeResult(code) {
+  const status=document.getElementById('search-status');
+  const list=document.getElementById('results-list');
+  status.innerHTML=`<div class="loading">🔍 Looking up barcode ${code}…</div>`;
+  list.innerHTML='';
+  try{const foods=await searchByBarcode(code);status.innerHTML='';renderResults(foods);}
+  catch(e){status.innerHTML='<div class="error-msg">Product not found. Try searching by name.</div>';}
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────────────
+async function doSearch(query) {
+  if(!query.trim())return;
+  const status=document.getElementById('search-status');
+  const list=document.getElementById('results-list');
+  status.innerHTML='<div class="loading">Searching…</div>';
+  list.innerHTML='';
+  try{
+    const [usda,off]=await Promise.allSettled([searchUSDA(query),searchOFF(query)]);
+    const foods=[
+      ...(usda.status==='fulfilled'?usda.value:[]),
+      ...(off.status==='fulfilled'?off.value:[])
+    ].slice(0,12);
+    status.innerHTML=foods.length
+      ?`<div class="section-label">${foods.length} results for "${query}"</div>`:'';
+    renderResults(foods);
+  }catch(e){
+    status.innerHTML='<div class="error-msg">Search failed. Check your connection and try again.</div>';
+  }
+}
+
+// ── MANUAL ENTRY ─────────────────────────────────────────────────────────────
+let manualFlags = [];
+
+function openManualModal() {
+  // Reset all fields
+  ['man-name','man-brand','man-cal','man-protein','man-carbs',
+   'man-fat','man-fiber','man-satfat','man-sodium'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  manualFlags = [];
+  document.querySelectorAll('.manual-flag-btn').forEach(b => {
+    b.className = 'manual-flag-btn';
+  });
+  document.getElementById('manual-error').style.display = 'none';
+  document.getElementById('manual-overlay').classList.add('active');
+}
+
+function closeManualModal() {
+  document.getElementById('manual-overlay').classList.remove('active');
+}
+
+function addManualEntry() {
+  const name = document.getElementById('man-name').value.trim();
+  const calRaw = document.getElementById('man-cal').value;
+  const errEl = document.getElementById('manual-error');
+
+  if (!name) {
+    errEl.textContent = 'Please enter a food name.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!calRaw || isNaN(parseFloat(calRaw))) {
+    errEl.textContent = 'Please enter the calorie amount.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  const g = id => parseFloat(document.getElementById(id).value) || 0;
+  const brand = document.getElementById('man-brand').value.trim() || 'Manual entry';
+  const sodium = g('man-sodium');
+  const satFat = g('man-satfat');
+
+  // Auto-detect flags from name if none manually selected
+  let flags = manualFlags.length > 0
+    ? [...manualFlags]
+    : getFlags(name, sodium, satFat);
+
+  todayLog.push({
+    id: Date.now(),
+    name,
+    brand,
+    calories: Math.round(parseFloat(calRaw)),
+    protein: Math.round(g('man-protein')*10)/10,
+    carbs: Math.round(g('man-carbs')*10)/10,
+    fat: Math.round(g('man-fat')*10)/10,
+    sodium: Math.round(sodium),
+    fiber: Math.round(g('man-fiber')*10)/10,
+    satFat: Math.round(satFat*10)/10,
+    servings: 1,
+    servingUnit: 'serving',
+    flags,
+    time: new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}),
+    manual: true
+  });
+
+  saveData(); renderLog(); updateHeader(); closeManualModal();
+  // Switch to today tab so user sees their entry
+  switchTab('log');
+}
+
+// ── TABS / NAV ────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.nav===name));
+  if(name==='log')renderLog();
+  if(name==='history')renderHistory();
+  if(name!=='search')stopScanner();
+}
+
+// ── MIDNIGHT CHECK ────────────────────────────────────────────────────────────
+function checkMidnight(){
+  const last=localStorage.getItem('ng_last_date');
+  const today=TODAY_KEY();
+  if(last&&last!==today)todayLog=[];
+  localStorage.setItem('ng_last_date',today);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+loadData(); checkMidnight(); updateDate(); updateHeader(); renderLog();
+
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.tab)));
+document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.nav)));
+document.getElementById('scan-toggle-btn').addEventListener('click',startScanner);
+document.getElementById('search-btn').addEventListener('click',()=>doSearch(document.getElementById('search-input').value));
+document.getElementById('search-input').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch(e.target.value);});
+document.getElementById('modal-add-btn').addEventListener('click',addToLog);
+document.getElementById('modal-cancel-btn').addEventListener('click',closeModal);
+document.getElementById('modal-overlay').addEventListener('click',e=>{
+  if(e.target===document.getElementById('modal-overlay'))closeModal();
+});
+document.getElementById('clear-btn').addEventListener('click',()=>{
+  if(confirm("Clear today's food log?")){todayLog=[];saveData();renderLog();updateHeader();}
+});
+
+// Manual entry wiring
+document.getElementById('manual-entry-btn').addEventListener('click', openManualModal);
+document.getElementById('manual-add-btn').addEventListener('click', addManualEntry);
+document.getElementById('manual-cancel-btn').addEventListener('click', closeManualModal);
+document.getElementById('manual-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('manual-overlay')) closeManualModal();
+});
+
+// Flag toggle buttons
+document.querySelectorAll('.manual-flag-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const flag = btn.dataset.flag;
+    const activeClass = 'active-'+flag;
+    if (btn.classList.contains(activeClass)) {
+      btn.classList.remove(activeClass);
+      manualFlags = manualFlags.filter(f => f !== flag);
+    } else {
+      btn.classList.add(activeClass);
+      if (!manualFlags.includes(flag)) manualFlags.push(flag);
+    }
+  });
+});
+
+setInterval(()=>{updateDate();checkMidnight();},60000);
+</script>
+</body>
+</html>
