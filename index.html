@@ -262,6 +262,12 @@
   ::-webkit-scrollbar { width: 3px; }
   ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
 
+  .alias-note {
+    font-size: 11px; color: var(--text3); padding: 5px 0 6px;
+    font-style: italic;
+  }
+  .alias-note strong { color: var(--text2); }
+
   /* PER UNIT LABEL ON RESULT CARDS */
   .result-per-unit {
     font-size: 11px; color: var(--accent2); font-weight: 600;
@@ -794,42 +800,59 @@ function updateDate() {
     d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 }
 
-// ── QUERY ALIASES — maps user terms to USDA-friendly terms ───────────────────
+// ── QUERY ALIASES — maps user terms to USDA exact naming conventions ──────────
+// USDA stores foods as "SUBJECT, descriptor" e.g. "Lettuce, romaine" not "romaine lettuce"
 const QUERY_ALIASES = {
-  'romaine': 'romaine lettuce',
+  // Vegetables
+  'romaine': 'lettuce romaine',
   'romaine lettuce': 'lettuce romaine',
-  'zucchini': 'zucchini summer squash',
-  'raw zucchini': 'squash summer zucchini raw',
-  'courgette': 'zucchini summer squash',
-  'bell pepper': 'sweet pepper',
-  'green pepper': 'sweet pepper green',
-  'red pepper': 'sweet pepper red',
-  'egg': 'egg whole raw',
-  'eggs': 'egg whole raw',
-  'whole egg': 'egg whole raw',
-  'avocado': 'avocados raw',
-  'salmon': 'salmon atlantic raw',
-  'greek yogurt': 'yogurt greek plain',
-  'cottage cheese': 'cheese cottage lowfat',
-  'sweet potato': 'sweet potato raw',
-  'oats': 'oats rolled dry',
-  'brown rice': 'rice brown long grain',
-  'lentils': 'lentils raw',
+  'zucchini': 'squash zucchini',
+  'raw zucchini': 'squash zucchini raw',
+  'courgette': 'squash zucchini',
+  'bell pepper': 'peppers sweet',
+  'green pepper': 'peppers sweet green',
+  'red pepper': 'peppers sweet red',
+  'yellow pepper': 'peppers sweet yellow',
   'broccoli': 'broccoli raw',
-  'apple': 'apple raw with skin',
+  'sweet potato': 'sweet potato raw',
+  'iceberg lettuce': 'lettuce iceberg',
+  'butterhead lettuce': 'lettuce butterhead',
+  // Eggs
+  'egg': 'egg whole raw fresh',
+  'eggs': 'egg whole raw fresh',
+  'whole egg': 'egg whole raw fresh',
+  'raw egg': 'egg whole raw fresh',
+  'boiled egg': 'egg whole cooked hard boiled',
+  'hard boiled egg': 'egg whole cooked hard boiled',
+  'scrambled egg': 'egg whole cooked scrambled',
+  // Fruit
+  'avocado': 'avocados raw',
+  'apple': 'apples raw',
   'banana': 'bananas raw',
   'nectarine': 'nectarines raw',
   'peach': 'peaches raw',
-  'kiwi': 'kiwi fruit raw',
+  'kiwi': 'kiwifruit raw',
   'orange': 'oranges raw',
   'cherry': 'cherries sweet raw',
   'cherries': 'cherries sweet raw',
   'blueberry': 'blueberries raw',
   'blueberries': 'blueberries raw',
-  'chicken breast': 'chicken breast raw boneless',
+  'strawberry': 'strawberries raw',
+  'strawberries': 'strawberries raw',
+  // Protein
+  'salmon': 'fish salmon atlantic raw',
+  'chicken breast': 'chicken broilers roasters breast raw',
   'turkey breast': 'turkey breast raw',
+  'greek yogurt': 'yogurt greek plain nonfat',
+  'cottage cheese': 'cheese cottage lowfat',
+  // Grains
   'english muffin': 'english muffin plain',
+  'oats': 'oatmeal rolled dry',
+  'brown rice': 'rice brown long grain raw',
+  'lentils': 'lentils raw',
+  // Dairy
   'swiss cheese': 'cheese swiss',
+  'cheddar': 'cheese cheddar',
 };
 
 // ── API: USDA ────────────────────────────────────────────────────────────────
@@ -1286,12 +1309,18 @@ async function doSearch(query) {
   status.innerHTML='<div class="loading">Searching…</div>';
   list.innerHTML='';
   try{
+    const q = query.toLowerCase().trim();
+    const aliasUsed = QUERY_ALIASES[q];
     const [usda,off]=await Promise.allSettled([searchUSDA(query),searchOFF(query)]);
     const raw=[
       ...(usda.status==='fulfilled'?usda.value:[]),
       ...(off.status==='fulfilled'?off.value:[])
     ];
     const foods = rankFoods(raw, query);
+
+    const aliasNote = aliasUsed
+      ? `<div class="alias-note">🔄 Searched USDA as: <strong>${aliasUsed}</strong></div>`
+      : '';
 
     // Show common portions hint if available
     const portions = getPortionsForQuery(query);
@@ -1301,13 +1330,13 @@ async function doSearch(query) {
           <div class="portion-hint-chips">
             ${portions.map(p=>`<div class="portion-chip" data-grams="${p.grams}">${p.label} (${p.grams}g)</div>`).join('')}
           </div>
-          <div class="portion-hint-note">Tap a size below after selecting a food to auto-fill servings</div>
+          <div class="portion-hint-note">Select a food below, then tap a size to auto-fill servings</div>
         </div>`
       : '';
 
     status.innerHTML = (foods.length
-      ? `<div class="section-label">${foods.length} results — USDA whole foods listed first</div>`
-      : '') + portionHint;
+      ? `<div class="section-label">${foods.length} results — USDA whole foods first</div>`
+      : '') + aliasNote + portionHint;
 
     renderResults(foods, portions);
   }catch(e){
