@@ -1201,60 +1201,55 @@ function renderHistory() {
 
 // ── SCANNER ───────────────────────────────────────────────────────────────────
 // ── ZXING SCANNER — works on iPhone Safari, Android Chrome, all browsers ─────
+// Uses @zxing/browser + @zxing/library via unpkg CDN (verified working URLs)
 let zxingReader = null;
 
-async function loadZXing() {
-  if (zxingReader) return zxingReader;
-  // Load ZXing library dynamically
+function loadScript(src) {
   return new Promise((resolve, reject) => {
-    if (window.ZXing) { resolve(buildReader()); return; }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.20.0/zxing.min.js';
-    script.onload = () => resolve(buildReader());
-    script.onerror = () => reject(new Error('Failed to load ZXing'));
-    document.head.appendChild(script);
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load: ' + src));
+    document.head.appendChild(s);
   });
 }
 
-function buildReader() {
-  const hints = new Map();
-  const formats = [
-    ZXing.BarcodeFormat.EAN_13,
-    ZXing.BarcodeFormat.EAN_8,
-    ZXing.BarcodeFormat.UPC_A,
-    ZXing.BarcodeFormat.UPC_E,
-    ZXing.BarcodeFormat.CODE_128,
-    ZXing.BarcodeFormat.CODE_39,
-  ];
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-  zxingReader = new ZXing.BrowserMultiFormatReader(hints);
+async function loadZXing() {
+  if (zxingReader) return zxingReader;
+  // Load both required ZXing packages in order
+  await loadScript('https://unpkg.com/@zxing/library@0.18.6/umd/index.min.js');
+  await loadScript('https://unpkg.com/@zxing/browser@0.0.10/umd/index.min.js');
+  // ZXingBrowser is now available globally
+  zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
   return zxingReader;
 }
 
 async function startScanner() {
   if (scannerActive) { stopScanner(); return; }
   const wrap = document.getElementById('scanner-wrap');
-  const video = document.getElementById('scanner-video');
   const label = document.getElementById('scanner-label');
   const btn = document.getElementById('scan-toggle-btn');
   const status = document.getElementById('search-status');
 
   btn.innerHTML = '<span>⏳</span> Starting camera…';
+  status.innerHTML = '';
 
   try {
     const reader = await loadZXing();
 
-    // Get available cameras — prefer rear camera
-    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+    // Get cameras — prefer rear facing
+    const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+    if (!devices || devices.length === 0) throw new Error('No camera found on this device');
+
     const rearCamera = devices.find(d =>
       /back|rear|environment/i.test(d.label)
-    ) || devices[devices.length - 1] || devices[0];
-
-    if (!rearCamera) throw new Error('No camera found');
+    ) || devices[devices.length - 1];
 
     wrap.classList.add('active');
     label.style.display = 'block';
-    label.textContent = 'Point camera at barcode';
+    label.textContent = 'Point camera at barcode — hold steady';
     btn.innerHTML = '<span>⏹</span> Stop Scanner';
     scannerActive = true;
 
@@ -1267,18 +1262,22 @@ async function startScanner() {
           stopScanner();
           handleBarcodeResult(code);
         }
-        // Ignore errors — ZXing fires continuously until it finds a code
+        // Continuous errors are normal — ZXing keeps scanning until it finds a barcode
       }
     );
 
   } catch(e) {
     stopScanner();
-    if (e.message && e.message.includes('Permission')) {
-      status.innerHTML = '<div class="error-msg">Camera access denied. Go to Settings → Safari → Camera and allow access, then try again.</div>';
-    } else if (e.message && e.message.includes('ZXing')) {
-      status.innerHTML = '<div class="error-msg">Scanner failed to load. Check your internet connection and try again.</div>';
+    console.error('Scanner error:', e);
+    const msg = e.message || '';
+    if (/permission|denied|notallowed/i.test(msg)) {
+      status.innerHTML = '<div class="error-msg">📷 Camera access denied.<br>Go to <strong>Settings → Safari → Camera</strong> and set it to Allow, then try again.</div>';
+    } else if (/no camera/i.test(msg)) {
+      status.innerHTML = '<div class="error-msg">No camera found. Try searching by name instead.</div>';
+    } else if (/failed to load/i.test(msg)) {
+      status.innerHTML = '<div class="error-msg">Scanner library failed to load. Check your internet connection and try again.</div>';
     } else {
-      status.innerHTML = '<div class="error-msg">Camera error: ' + (e.message||'unknown') + '</div>';
+      status.innerHTML = '<div class="error-msg">Scanner error: ' + msg + '<br>Try searching by food name instead.</div>';
     }
     btn.innerHTML = '<span>📷</span> Scan Barcode';
   }
