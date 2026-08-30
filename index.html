@@ -472,7 +472,7 @@
     <span>📷</span> Scan Barcode
   </button>
   <div class="scanner-wrap" id="scanner-wrap">
-    <video id="scanner-video" autoplay playsinline muted></video>
+    <video id="scanner-video" autoplay playsinline muted webkit-playsinline></video>
     <div class="scanner-overlay">
       <div class="scan-frame"><div class="scan-line"></div></div>
     </div>
@@ -1200,51 +1200,108 @@ function renderHistory() {
 }
 
 // ── SCANNER ───────────────────────────────────────────────────────────────────
+// ── ZXING SCANNER — works on iPhone Safari, Android Chrome, all browsers ─────
+let zxingReader = null;
+
+async function loadZXing() {
+  if (zxingReader) return zxingReader;
+  // Load ZXing library dynamically
+  return new Promise((resolve, reject) => {
+    if (window.ZXing) { resolve(buildReader()); return; }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.20.0/zxing.min.js';
+    script.onload = () => resolve(buildReader());
+    script.onerror = () => reject(new Error('Failed to load ZXing'));
+    document.head.appendChild(script);
+  });
+}
+
+function buildReader() {
+  const hints = new Map();
+  const formats = [
+    ZXing.BarcodeFormat.EAN_13,
+    ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A,
+    ZXing.BarcodeFormat.UPC_E,
+    ZXing.BarcodeFormat.CODE_128,
+    ZXing.BarcodeFormat.CODE_39,
+  ];
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+  zxingReader = new ZXing.BrowserMultiFormatReader(hints);
+  return zxingReader;
+}
+
 async function startScanner() {
   if (scannerActive) { stopScanner(); return; }
   const wrap = document.getElementById('scanner-wrap');
   const video = document.getElementById('scanner-video');
   const label = document.getElementById('scanner-label');
   const btn = document.getElementById('scan-toggle-btn');
+  const status = document.getElementById('search-status');
+
+  btn.innerHTML = '<span>⏳</span> Starting camera…';
+
   try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
-    });
-    video.srcObject = scannerStream;
+    const reader = await loadZXing();
+
+    // Get available cameras — prefer rear camera
+    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+    const rearCamera = devices.find(d =>
+      /back|rear|environment/i.test(d.label)
+    ) || devices[devices.length - 1] || devices[0];
+
+    if (!rearCamera) throw new Error('No camera found');
+
     wrap.classList.add('active');
-    label.style.display='block';
-    btn.innerHTML='<span>⏹</span> Stop Scanner';
-    scannerActive=true;
-    if ('BarcodeDetector' in window) {
-      const bd = new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
-      scanInterval = setInterval(async()=>{
-        if(!scannerActive)return;
-        try {
-          const codes = await bd.detect(video);
-          if(codes.length){stopScanner();handleBarcodeResult(codes[0].rawValue);}
-        }catch(e){}
-      },500);
-    } else {
-      label.textContent='BarcodeDetector not supported. Try Chrome on Android.';
-    }
+    label.style.display = 'block';
+    label.textContent = 'Point camera at barcode';
+    btn.innerHTML = '<span>⏹</span> Stop Scanner';
+    scannerActive = true;
+
+    await reader.decodeFromVideoDevice(
+      rearCamera.deviceId,
+      'scanner-video',
+      (result, err) => {
+        if (result) {
+          const code = result.getText();
+          stopScanner();
+          handleBarcodeResult(code);
+        }
+        // Ignore errors — ZXing fires continuously until it finds a code
+      }
+    );
+
   } catch(e) {
-    document.getElementById('search-status').innerHTML=
-      '<div class="error-msg">Camera access denied. Allow camera permissions and try again.</div>';
+    stopScanner();
+    if (e.message && e.message.includes('Permission')) {
+      status.innerHTML = '<div class="error-msg">Camera access denied. Go to Settings → Safari → Camera and allow access, then try again.</div>';
+    } else if (e.message && e.message.includes('ZXing')) {
+      status.innerHTML = '<div class="error-msg">Scanner failed to load. Check your internet connection and try again.</div>';
+    } else {
+      status.innerHTML = '<div class="error-msg">Camera error: ' + (e.message||'unknown') + '</div>';
+    }
+    btn.innerHTML = '<span>📷</span> Scan Barcode';
   }
 }
 
 function stopScanner() {
-  const wrap=document.getElementById('scanner-wrap');
-  const label=document.getElementById('scanner-label');
-  const btn=document.getElementById('scan-toggle-btn');
-  const video=document.getElementById('scanner-video');
-  if(scannerStream){scannerStream.getTracks().forEach(t=>t.stop());scannerStream=null;}
-  if(scanInterval){clearInterval(scanInterval);scanInterval=null;}
+  const wrap = document.getElementById('scanner-wrap');
+  const label = document.getElementById('scanner-label');
+  const btn = document.getElementById('scan-toggle-btn');
+  const video = document.getElementById('scanner-video');
+  if (zxingReader) {
+    try { zxingReader.reset(); } catch(e) {}
+  }
+  if (scannerStream) {
+    scannerStream.getTracks().forEach(t => t.stop());
+    scannerStream = null;
+  }
+  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
   wrap.classList.remove('active');
-  label.style.display='none';
-  btn.innerHTML='<span>📷</span> Scan Barcode';
-  video.srcObject=null;
-  scannerActive=false;
+  label.style.display = 'none';
+  btn.innerHTML = '<span>📷</span> Scan Barcode';
+  video.srcObject = null;
+  scannerActive = false;
 }
 
 async function handleBarcodeResult(code) {
