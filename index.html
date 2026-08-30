@@ -1225,13 +1225,17 @@ async function startScanner() {
   try {
     const reader = await loadZXing();
 
-    // Get cameras — prefer rear facing
-    const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
-    if (!devices || devices.length === 0) throw new Error('No camera found on this device');
+    // Use standard browser API to enumerate cameras — works on all browsers including Safari
+    const allDevices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
 
-    const rearCamera = devices.find(d =>
+    // Prefer rear camera — on iPhone this is the environment-facing camera
+    const rearCamera = videoDevices.find(d =>
       /back|rear|environment/i.test(d.label)
-    ) || devices[devices.length - 1];
+    ) || videoDevices[videoDevices.length - 1] || videoDevices[0];
+
+    // Use environment-facing constraint directly — most reliable on iPhone
+    const deviceId = rearCamera ? rearCamera.deviceId : undefined;
 
     wrap.classList.add('active');
     label.style.display = 'block';
@@ -1240,7 +1244,7 @@ async function startScanner() {
     scannerActive = true;
 
     await reader.decodeFromVideoDevice(
-      rearCamera.deviceId,
+      deviceId,
       'scanner-video',
       (result, err) => {
         if (result) {
